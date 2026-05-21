@@ -1,0 +1,17 @@
+package io.github.promptt001.coordinatecracker.data;
+
+public class DataSupplier {
+
+	private static int[] validThreadCounts = new int[] {1, 2, 4};
+	
+	/**
+	* Returns true if supplied thread count is allowed
+	* threadCount: count of threads to check
+	*/
+	public static boolean allowedThreadCount(int threadCount) {
+		for(int i : validThreadCounts) {
+			if(i == threadCount) return true;
+		}
+		return false;
+	}
+}

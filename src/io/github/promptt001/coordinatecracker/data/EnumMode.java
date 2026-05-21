@@ -1,0 +1,16 @@
+package io.github.promptt001.coordinatecracker.data;
+
+public enum EnumMode {
+
+	SINGLE(0),
+	MASTER(1),
+	SLAVE(2),
+	DIE(3);
+	
+	public final int value;
+	
+	private EnumMode(int value) {
+		this.value = value;
+	}
+	
+}

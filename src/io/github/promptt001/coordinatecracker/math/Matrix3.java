@@ -1,0 +1,186 @@
+package io.github.promptt001.coordinatecracker.math;
+
+public class Matrix3 {
+
+	private int[][][] matrix;
+	
+	private final Vector3 size;
+	private final Vector3 center;
+	
+	/**
+	* Matrix3 constructor using given bounds and center
+	* bounds: size of matrix (same way as an array)
+	* center: center of the matrix
+	*/
+	public Matrix3(Vector3 size, Vector3 center) {
+		this.size = size;
+		this.center = center;
+		
+		this.matrix = new int[size.getY()][size.getX()][size.getZ()];
+	}
+	
+	
+	/**
+	* Matrix3 constructor copying an existing Matrix3
+	* matrix: Matrix3 instance to copy
+	*/
+	public Matrix3(Matrix3 matrix) {
+		this.size = matrix.getSize();
+		this.center = matrix.getCenter();
+		
+		int[][][] array = new int[this.size.getY()][this.size.getX()][this.size.getZ()];
+		for(int y = 0; y < array.length; y++) {
+			for(int x = 0; x < array[0].length; x++) {
+				for(int z = 0; z < array[0][0].length; z++) {
+					array[y][x][z] = matrix.getMatrixArray()[y][x][z];
+				}
+			}
+		}
+		
+		this.matrix = array;
+	}
+	
+	
+	/**
+	* Matrix3 constructor using an Integer array and center
+	* matrix: 3-dimensional Integer array
+	* center: center of the matrix
+	*/
+	public Matrix3(int[][][] matrix, Vector3 center) {
+		this.size = new Vector3(matrix[0].length, matrix.length, matrix[0][0].length);
+		this.center = center;
+		
+		int[][][] array = new int[this.size.getY()][this.size.getX()][this.size.getZ()];
+		for(int y = 0; y < array.length; y++) {
+			for(int x = 0; x < array[0].length; x++) {
+				for(int z = 0; z < array[0][0].length; z++) {
+					array[y][x][z] = matrix[y][x][z];
+				}
+			}
+		}
+		
+		this.matrix = array;
+	}
+	
+	
+	/**
+	* Returns size as a Vector3 instance
+	*/
+	public Vector3 getSize() {
+		return this.size;
+	}
+	
+	
+	/**
+	* Returns x-size
+	*/
+	public int getSizeX() {
+		return this.size.getX();
+	}
+	
+	
+	/**
+	* Returns y-size
+	*/
+	public int getSizeY() {
+		return this.size.getY();
+	}
+	
+	
+	/**
+	* Returns z-size
+	*/
+	public int getSizeZ() {
+		return this.size.getZ();
+	}
+	
+	
+	/**
+	* Returns center as a Vector3 instance
+	*/
+	public Vector3 getCenter() {
+		return this.center;
+	}
+	
+	
+	/**
+	* Returns x-center
+	*/
+	public int getCenterX() {
+		return this.center.getX();
+	}
+	
+	
+	/**
+	* Returns y-center
+	*/
+	public int getCenterY() {
+		return this.center.getY();
+	}
+	
+	
+	/**
+	* Returns z-center
+	*/
+	public int getCenterZ() {
+		return this.center.getZ();
+	}
+	
+	
+	/**
+	* Returns matrix as an Integer array
+	*/
+	public int[][][] getMatrixArray() {
+		return this.matrix;
+	}
+	
+	
+	/**
+	* Returns value stored at a given index
+	* index: index represented by a Vector3 instance
+	*/
+	public int getValue(Vector3 index) {
+		return this.matrix[index.getY()][index.getX()][index.getZ()];
+	}
+	
+	
+	/**
+	* Returns a Matrix2 instance representing a layer of the matrix
+	* layer: layer to return
+	*/
+	public Matrix2 getLayer(int layer) {
+		return new Matrix2(this.matrix[layer], new Vector2(this.getCenterX(), this.getCenterZ()));
+	}
+	
+	
+	/**
+	* Sets matrix Integer array to a given Integer array
+	* matrix: Integer array to copy
+	*/
+	public void setMatrixArray(int[][][] matrix) {
+		this.matrix = matrix;
+	}
+	
+	
+	/**
+	* Sets given index to given value
+	* index: index represented by a Vector3 instance
+	* value: Integer value
+	*/
+	public void setValue(Vector3 index, int value) {
+		this.matrix[index.getY()][index.getX()][index.getZ()] = value;
+	}
+	
+	
+	/**
+	* Sets specified layer of matrix to values of a given Matrix2 instance
+	* layer: layer to change
+	* value: Matrix2 instance to apply
+	*/
+	public void setLayer(int layer, Matrix2 value) {
+		if(value.getSizeX() != this.getSizeX() || value.getSizeZ() != this.getSizeZ()) {
+			throw new IllegalArgumentException("Layer dimensions " + value.getSizeX() + "x" + value.getSizeZ() + " do not match matrix dimensions " + this.getSizeX() + "x" + this.getSizeZ() + ".");
+		}
+		this.matrix[layer] = value.getMatrixArray();
+	}
+}

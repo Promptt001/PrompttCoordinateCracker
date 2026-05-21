@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.env
+node_modules/
+dist/
+build/
+.DS_Store
+
+# Java build outputs
+*.class
+*.jar
+target/
+build/
+out/
+
+# Avoid accidentally committing copied Minecraft vanilla texture assets.
+src/assets/minecraft/textures/block/*.png
