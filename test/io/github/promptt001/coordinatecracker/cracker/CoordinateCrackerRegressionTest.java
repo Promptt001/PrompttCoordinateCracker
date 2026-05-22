@@ -1,9 +1,12 @@
 package io.github.promptt001.coordinatecracker.cracker;
 
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.List;
+
+import javax.imageio.ImageIO;
 
 import io.github.promptt001.coordinatecracker.data.EnumBlockType;
 import io.github.promptt001.coordinatecracker.data.EnumMCVersion;
@@ -14,6 +17,7 @@ import io.github.promptt001.coordinatecracker.math.Vector2;
 import io.github.promptt001.coordinatecracker.math.Vector3;
 import io.github.promptt001.coordinatecracker.io.PatternCodec;
 import io.github.promptt001.coordinatecracker.io.PatternData;
+import io.github.promptt001.coordinatecracker.io.TextureManager;
 import io.github.promptt001.coordinatecracker.utils.MatrixHelper;
 
 public final class CoordinateCrackerRegressionTest {
@@ -34,7 +38,51 @@ public final class CoordinateCrackerRegressionTest {
         testCandidateMaskRangeConstraints();
         testStateMaskPlaneExtractsVisibleBitsAcrossWordBoundaries();
         testMatchCollectorSortsByDistance();
+        testTextureManagerUsesOneFrameForAnimatedTextureStrips();
         System.out.println("All regression tests passed.");
+    }
+
+
+    private static void testTextureManagerUsesOneFrameForAnimatedTextureStrips() {
+        File root = new File(System.getProperty("java.io.tmpdir"), "pcc-texture-strip-" + System.nanoTime());
+        try {
+            File blockDir = new File(root, "assets/minecraft/textures/block");
+            if(!blockDir.mkdirs()) throw new IOException("Could not create texture test directory");
+
+            BufferedImage strip = new BufferedImage(16, 64, BufferedImage.TYPE_INT_ARGB);
+            for(int y = 0; y < strip.getHeight(); y++) {
+                for(int x = 0; x < strip.getWidth(); x++) {
+                    int frame = y / 16;
+                    int argb = 0xff000000 | (frame << 16) | (x << 8) | y;
+                    strip.setRGB(x, y, argb);
+                }
+            }
+            ImageIO.write(strip, "png", new File(blockDir, "sculk.png"));
+
+            TextureManager textureManager = new TextureManager();
+            textureManager.loadUserSource(root);
+            BufferedImage sculk = textureManager.getTexture(EnumBlockType.SCULK);
+            assertTrue(sculk != null, "sculk texture should load from a vanilla assets tree");
+            assertEquals(Integer.valueOf(16), Integer.valueOf(sculk.getWidth()), "animated sculk strip should render as one frame width");
+            assertEquals(Integer.valueOf(16), Integer.valueOf(sculk.getHeight()), "animated sculk strip should render as one frame height");
+            assertEquals(Integer.valueOf(strip.getRGB(7, 15)), Integer.valueOf(sculk.getRGB(7, 15)), "representative frame should preserve first-frame pixels");
+            assertEquals(Integer.valueOf(strip.getRGB(0, 0)), Integer.valueOf(sculk.getRGB(0, 0)), "representative frame should start at first frame origin");
+        } catch(IOException e) {
+            throw new AssertionError("Texture strip test setup failed", e);
+        } finally {
+            deleteRecursively(root);
+        }
+    }
+
+    private static void deleteRecursively(File file) {
+        if(file == null || !file.exists()) return;
+        if(file.isDirectory()) {
+            File[] children = file.listFiles();
+            if(children != null) {
+                for(File child : children) deleteRecursively(child);
+            }
+        }
+        file.delete();
     }
 
     private static void testUnknownBlockTokensDoNotDefaultToDeepslate() {

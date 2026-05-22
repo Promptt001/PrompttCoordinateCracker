@@ -1,6 +1,5 @@
 package io.github.promptt001.coordinatecracker.io;
 
-import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -151,12 +150,28 @@ public final class TextureManager {
 
     private static BufferedImage normalizeTexture(BufferedImage image) {
         if(image == null) return null;
-        if(image.getType() == BufferedImage.TYPE_INT_ARGB) return image;
-        BufferedImage normalized = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = normalized.createGraphics();
-        g.drawImage(image, 0, 0, null);
-        g.dispose();
+        int width = image.getWidth();
+        int height = image.getHeight();
+        if(width <= 0 || height <= 0) return image;
+
+        int outputHeight = representativeFrameHeight(width, height);
+        if(image.getType() == BufferedImage.TYPE_INT_ARGB && outputHeight == height) return image;
+
+        BufferedImage normalized = new BufferedImage(width, outputHeight, BufferedImage.TYPE_INT_ARGB);
+        int[] pixels = image.getRGB(0, 0, width, outputHeight, null, 0, width);
+        normalized.setRGB(0, 0, width, outputHeight, pixels, 0, width);
         return normalized;
+    }
+
+    /**
+     * Minecraft animated block textures are stored as a vertical strip of
+     * square frames, with timing/interpolation controlled by a sidecar mcmeta
+     * file. The pattern editor uses static Swing icons, so render one canonical
+     * frame instead of compressing the entire strip into a single square.
+     */
+    private static int representativeFrameHeight(int width, int height) {
+        if(height > width && height % width == 0) return width;
+        return height;
     }
 
     private static BufferedImage readTexture(File source, String fileName) {
