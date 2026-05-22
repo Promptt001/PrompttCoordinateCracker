@@ -8,7 +8,8 @@ A practical checklist for keeping this project polished, stable, and understanda
 2. Make the documentation easy to follow for non-specialists.
 3. Keep optional acceleration paths isolated from the dependency-free Java baseline.
 4. Prefer small stability and performance changes over new UI or scanning features.
-5. Record assumptions and limitations clearly when a behavior is subtle.
+5. Preserve researcher-facing reproducibility details: version, surface/facing semantics, bounds, acceleration mode, and limitations.
+6. Record assumptions and limitations clearly when a behavior is subtle.
 
 ## Documentation standards
 
@@ -18,6 +19,8 @@ A practical checklist for keeping this project polished, stable, and understanda
 - Use exact command snippets that can be copied without editing whenever possible.
 - Explain failure modes in terms of user actions: wrong surface, weak pattern, broad bounds, missing OpenCL runtime, or unsupported block profile.
 - Avoid implying that a match proves a screenshot's true location without qualification.
+- Keep [Project walkthrough and methodology](PROJECT_WALKTHROUGH.md) aligned with setup, workflow, architecture, and limitation changes.
+- Prefer professional, source-verifiable claims over casual or promotional language.
 
 ## Stability review checklist
 

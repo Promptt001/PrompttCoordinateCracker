@@ -1,5 +1,5 @@
-# Pattern token format: block_type:rotation, where rotation is 0..3. Use ? for unknown. Rows match the visible GUI grid.
-# Supported block types: deepslate, stone, dirt, netherrack, sand, red_sand, rooted_dirt, grass_block, podzol, dirt_path, sculk.
+# Pattern token format: block_type:state, where state depends on the selected block profile. Use ? for unknown. Rows match the visible GUI grid.
+# See docs/BLOCK_PROFILES_AND_TEXTURES.md for the current supported profile list.
 ? ? ? ? ? ? ?
 ? ? ? ? ? ? ?
 ? ? ? ? ? ? ?

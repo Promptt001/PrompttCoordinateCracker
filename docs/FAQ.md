@@ -47,6 +47,11 @@ If facing is not locked, the same coordinate can satisfy the pattern under more 
 
 You can use them for visual classification if you understand how the pack changes the face states. The predictor is based on Minecraft's coordinate-derived model choice, not the image files. A resource pack can still make state labels visually ambiguous or change the mapping you expect.
 
+
+## How should I document a scan for another researcher?
+
+Include the repository commit or release, Java version, operating system, pattern file, Minecraft version setting, surface mode, facing mode, Y range, radius, acceleration mode, max match limit, texture source, and final match count. If the screenshot can be shared, include it or an annotated crop that identifies the reference block. See [Project walkthrough and methodology](PROJECT_WALKTHROUGH.md) for a fuller reproducibility checklist.
+
 ## Is this appropriate for every server or screenshot?
 
 No. Dense coordinate fingerprints can reveal location information. Use the tool only for screenshots, events, worlds, and servers where coordinate inference is allowed.

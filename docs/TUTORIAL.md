@@ -1,6 +1,6 @@
 # Tutorial and workflow
 
-A guided workflow for turning a screenshot into a constrained coordinate search.
+A guided workflow for turning a screenshot into a constrained coordinate search. For a complete project-level explanation of the research model, data flow, limitations, and reproducibility checklist, read [Project walkthrough and methodology](PROJECT_WALKTHROUGH.md).
 
 ## Intro: the block-rotation treasure hunt
 
@@ -10,7 +10,7 @@ Minecraft is very good at looking random while being completely deterministic. M
 
 Use it only for screenshots, events, worlds, and servers where coordinate inference is allowed. A dense enough pattern can reveal location information.
 
-Fun optimization facts:
+Implementation summary:
 
 - The scanner works outward from world origin, so early results are usually the most plausible survival/server coordinates.
 - Observations are compiled once into primitive offsets before scanning, avoiding matrix/enumeration lookups inside the hot loop.
@@ -18,7 +18,7 @@ Fun optimization facts:
 - Optional OpenCL mode keeps one persistent helper process alive instead of launching a new GPU process per work chunk.
 - Dense 1.21.11 patterns can optionally be sent to an SMT bit-vector solver, then verified by the normal Java matcher before they are accepted.
 
-Inspired by [DerBejijing/BlockRotationExploit](https://github.com/DerBejijing/BlockRotationExploit). Proudly assisted by AI.
+Inspired by [DerBejijing/BlockRotationExploit](https://github.com/DerBejijing/BlockRotationExploit). Development was assisted by AI tooling; mathematical and behavioral claims should be verified against the source, tests, and documented assumptions.
 
 ## What this tool does
 
@@ -94,6 +94,8 @@ Controls:
 | **Clear all layers** | Clears the full 7×7×7 pattern. |
 
 Do not guess. A wrong known observation can eliminate the real coordinate.
+
+For research notes, record why each entered observation was considered reliable. If a block face is ambiguous because of lighting, compression, perspective, or texture-pack changes, leave it unknown and mention the uncertainty separately.
 
 ### 4. Use known block profiles only
 

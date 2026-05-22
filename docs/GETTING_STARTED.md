@@ -1,6 +1,6 @@
 # Getting started
 
-Use this guide to install the prerequisites, build the jar, run tests, and launch the application.
+Use this guide to install the prerequisites, build the jar, run tests, and launch the application. For the conceptual research model and end-to-end project breakdown, read [Project walkthrough and methodology](PROJECT_WALKTHROUGH.md).
 
 ## Requirements
 
@@ -33,11 +33,25 @@ java -jar Promptts_Coordinate_Cracker.jar
 
 For a first scan:
 
-1. Load `examples/TestPattern`.
+1. Load `examples/TestPattern` or the denser `examples/20058x_82y_86z` example.
 2. Leave **MC version** on `1.21.11`.
 3. Leave **Acceleration** on `CPU only`.
 4. Use a small radius and a tight Y range.
 5. Click **Start scan**.
+
+The screenshot and GUI reference images in `examples/` are intended as visual aids for understanding the mapping from a Minecraft image to a 7×7 pattern. They are not required to run the application.
+
+## First-run validation checklist
+
+Before widening a real research scan, confirm these basics:
+
+- `./test.sh` reports that all regression tests passed.
+- `./build.sh` or `build.bat` creates `Promptts_Coordinate_Cracker.jar`.
+- The GUI opens from `java -jar Promptts_Coordinate_Cracker.jar`.
+- A small CPU-only scan starts and stops cleanly.
+- Pattern files can be loaded from `examples/` and saved to a new path.
+
+This checklist separates environment problems from pattern-classification or search-bound problems.
 
 ## Build, test, and run
 
