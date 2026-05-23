@@ -29,8 +29,9 @@ final class PlaneCache {
         this.depth = maxZExclusive - minZ;
         this.version = version;
 
-        long cells = Math.max(1L, (long) this.width * (long) this.depth);
-        long bytesPerPlane = (((cells + 63L) >>> 6) * Long.BYTES) * 4L;
+        long wordsPerRow = Math.max(1L, (long) ((this.width + 63) >>> 6));
+        long words = Math.max(1L, wordsPerRow * (long) this.depth);
+        long bytesPerPlane = words * Long.BYTES * (long) StateMaskPlane.MASK_COUNT;
         int byMemory = (int) Math.max(1L, Math.min(16L, TARGET_CACHE_BYTES / Math.max(1L, bytesPerPlane)));
         final int maxCachedPlanes = Math.max(1, Math.min(Math.max(1, distinctLookupYOffsets + 1), byMemory));
 

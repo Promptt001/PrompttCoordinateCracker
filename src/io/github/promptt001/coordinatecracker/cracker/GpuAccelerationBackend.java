@@ -28,7 +28,7 @@ import io.github.promptt001.coordinatecracker.data.EnumRotation;
  * reference OpenCL helper under gpu/opencl_coordinatecracker.c.
  */
 final class GpuAccelerationBackend implements AutoCloseable {
-    private static final String PROTOCOL = "PCCGPU3";
+    private static final String PROTOCOL = "PCCGPU4";
     private static final int HELPER_TIMEOUT_SECONDS = Integer.getInteger("coordinatecracker.gpuTimeoutSeconds", 600);
     private static final int PROBE_TIMEOUT_SECONDS = Integer.getInteger("coordinatecracker.gpuProbeTimeoutSeconds", 10);
     private static final int OUTPUT_DRAIN_TIMEOUT_SECONDS = Integer.getInteger("coordinatecracker.gpuOutputDrainTimeoutSeconds", 5);
@@ -114,14 +114,17 @@ final class GpuAccelerationBackend implements AutoCloseable {
                 if(observation.version != EnumMCVersion.V1_21_11) {
                     return "GPU backend currently supports only Minecraft 1.21.11 observations.";
                 }
+                if(observation.visibleMapping == CompiledObservation.MAPPING_CONSTANT_ZERO) {
+                    if(observation.wanted != 0) {
+                        return "GPU backend received a constant-state observation outside the visible 0 range.";
+                    }
+                    continue;
+                }
                 if(observation.variantCount != 4) {
                     return "GPU backend currently supports only four-state random block variants.";
                 }
                 if(observation.wanted < 0 || observation.wanted > 3) {
                     return "GPU backend received an observation with an unsupported wanted state: " + observation.wanted + ".";
-                }
-                if(observation.visibleMapping == CompiledObservation.MAPPING_CONSTANT_ZERO) {
-                    return "GPU backend does not run one-state side-face profiles because they do not add a coordinate constraint.";
                 }
                 if(observation.visibleMapping == CompiledObservation.MAPPING_MODULO_TWO && observation.wanted > 1) {
                     return "GPU backend received a two-state block observation outside the visible 0..1 range.";

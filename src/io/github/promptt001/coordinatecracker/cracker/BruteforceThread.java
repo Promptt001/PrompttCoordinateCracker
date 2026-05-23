@@ -293,7 +293,7 @@ public class BruteforceThread extends Thread {
 			int chunkWidth = width;
 			int chunkDepthActual = chunkEndZ - chunkStartZ;
 			int chunkCells = chunkWidth * chunkDepthActual;
-			CandidateMask candidates = new CandidateMask(chunkCells);
+			CandidateMask candidates = new CandidateMask(chunkWidth, chunkDepthActual);
 
 			for(int y = this.start.getY(); y < this.end.getY(); y++) {
 				if(this.coordinateBruteforcer.isCancelled() || Thread.currentThread().isInterrupted()) {
@@ -319,8 +319,14 @@ public class BruteforceThread extends Thread {
 	}
 
 	private boolean applyPatternConstraints(CandidateMask candidates, int chunkWidth, int chunkDepth, int chunkStartZ, int y, CompiledPattern compiledPattern, PlaneCache planeCache, ScanBounds bounds) {
+		if(compiledPattern.observations.length == 0) {
+			candidates.setAll();
+			return !candidates.isEmpty();
+		}
+
+		boolean initialized = false;
 		for(CompiledObservation observation : compiledPattern.observations) {
-			if(candidates.isEmpty()) {
+			if(initialized && candidates.isEmpty()) {
 				return false;
 			}
 
@@ -329,14 +335,18 @@ public class BruteforceThread extends Thread {
 			int zShift = observation.dz - bounds.minDz;
 
 			for(int localZ = 0; localZ < chunkDepth; localZ++) {
-				int sourceRowStart = (localZ + zShift) * plane.width + xShift;
-				int destRowStart = localZ * chunkWidth;
-				for(int localX = 0; localX < chunkWidth; localX += 64) {
+				int sourceRow = localZ + zShift;
+				for(int wordInRow = 0, localX = 0; localX < chunkWidth; wordInRow++, localX += 64) {
 					int bitCount = Math.min(64, chunkWidth - localX);
-					long allowedBits = plane.extractVisibleBits(observation, sourceRowStart + localX, bitCount);
-					candidates.andRange(destRowStart + localX, allowedBits, bitCount);
+					long allowedBits = plane.extractVisibleBits(observation, sourceRow, xShift + localX, bitCount);
+					if(initialized) {
+						candidates.andWord(localZ, wordInRow, allowedBits, bitCount);
+					} else {
+						candidates.setWord(localZ, wordInRow, allowedBits, bitCount);
+					}
 				}
 			}
+			initialized = true;
 		}
 		return !candidates.isEmpty();
 	}
@@ -393,7 +403,7 @@ public class BruteforceThread extends Thread {
 			return Math.max(1, depth);
 		}
 
-		long targetCells = Math.max(1L, targetBytes * 4L);
+		long targetCells = Math.max(1L, (targetBytes * 8L) / (long) StateMaskPlane.MASK_COUNT);
 		long chunk = (targetCells / extendedWidth) - dzRange;
 		if(chunk < 1L) {
 			chunk = 1L;
@@ -401,7 +411,8 @@ public class BruteforceThread extends Thread {
 		if(chunk > depth) {
 			chunk = depth;
 		}
-		long maxChunkByBitSetIndex = Math.max(1L, Integer.MAX_VALUE / Math.max(1, width));
+		long candidateWordsPerRow = Math.max(1L, (long) ((width + 63) >>> 6));
+		long maxChunkByBitSetIndex = Math.max(1L, Integer.MAX_VALUE / candidateWordsPerRow);
 		if(chunk > maxChunkByBitSetIndex) {
 			chunk = maxChunkByBitSetIndex;
 		}

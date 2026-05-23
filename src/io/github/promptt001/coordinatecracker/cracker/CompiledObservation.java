@@ -80,8 +80,12 @@ final class CompiledObservation {
     }
 
     static int getVariant4ForCoordinates_1_21_11(int x, int y, int z) {
-        long i = (long) (x * 3129871) ^ (long) z * 116129781L ^ (long) y;
-        i = i * i * 42317861L + i * 11L;
+        long mixedInput = (long) (x * 3129871) ^ (long) z * 116129781L ^ (long) y;
+        return getVariant4ForMixedInput(mixedInput);
+    }
+
+    static int getVariant4ForMixedInput(long mixedInput) {
+        long i = mixedInput * mixedInput * 42317861L + mixedInput * 11L;
         long seed = i >> 16;
         long randomSeed = (seed ^ RANDOM_MULTIPLIER) & RANDOM_SEED_MASK;
         randomSeed = (randomSeed * RANDOM_MULTIPLIER + RANDOM_INCREMENT) & RANDOM_SEED_MASK;
