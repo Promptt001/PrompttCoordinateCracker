@@ -408,20 +408,29 @@ static int ensure_buffer(struct GpuContext *gpu, cl_mem *buffer, size_t *capacit
 
 static int compute_extents(const struct ScanRequest *request, struct ScanExtents *extents) {
     memset(extents, 0, sizeof(*extents));
-    extents->minDx = request->observations[0].dx;
-    extents->maxDx = request->observations[0].dx;
-    extents->minDy = request->observations[0].dy;
-    extents->maxDy = request->observations[0].dy;
-    extents->minDz = request->observations[0].dz;
-    extents->maxDz = request->observations[0].dz;
-    for(int i = 1; i < request->observationCount; ++i) {
+    int initialized = 0;
+    for(int i = 0; i < request->observationCount; ++i) {
         const struct Observation *obs = &request->observations[i];
+        if(obs->visibleMapping == 2) {
+            continue;
+        }
+        if(!initialized) {
+            extents->minDx = extents->maxDx = obs->dx;
+            extents->minDy = extents->maxDy = obs->dy;
+            extents->minDz = extents->maxDz = obs->dz;
+            initialized = 1;
+            continue;
+        }
         if(obs->dx < extents->minDx) extents->minDx = obs->dx;
         if(obs->dx > extents->maxDx) extents->maxDx = obs->dx;
         if(obs->dy < extents->minDy) extents->minDy = obs->dy;
         if(obs->dy > extents->maxDy) extents->maxDy = obs->dy;
         if(obs->dz < extents->minDz) extents->minDz = obs->dz;
         if(obs->dz > extents->maxDz) extents->maxDz = obs->dz;
+    }
+    if(!initialized) {
+        die("No coordinate-constraining observations were supplied to the GPU sieve.");
+        return 0;
     }
 
     extents->width = request->maxXExclusive - request->minX;

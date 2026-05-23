@@ -35,16 +35,21 @@ final class GpuAccelerationBackend implements AutoCloseable {
     private static final int DEFAULT_MAX_MATCHES = 1 << 20;
     private static final int MAX_HELPER_PATTERNS = Integer.getInteger("coordinatecracker.gpuMaxPatterns", 12);
     private static final int MAX_HELPER_OBSERVATIONS = Integer.getInteger("coordinatecracker.gpuMaxObservations", 4096);
+    private static final int SIEVE_MASKS_PER_PLANE = 6;
+    private static final long DEFAULT_MAX_MASK_BYTES = 256L * 1024L * 1024L;
+    private static final long MIN_MAX_MASK_BYTES = 8L * 1024L * 1024L;
 
     private final List<String> command;
     private final int maxMatches;
+    private final long maxMaskBytes;
     private final boolean available;
     private final String statusMessage;
     private PersistentHelper sharedHelper;
 
-    private GpuAccelerationBackend(List<String> command, int maxMatches, boolean available, String statusMessage) {
+    private GpuAccelerationBackend(List<String> command, int maxMatches, long maxMaskBytes, boolean available, String statusMessage) {
         this.command = command;
         this.maxMatches = maxMatches;
+        this.maxMaskBytes = maxMaskBytes;
         this.available = available;
         this.statusMessage = statusMessage;
         this.sharedHelper = null;
@@ -57,8 +62,13 @@ final class GpuAccelerationBackend implements AutoCloseable {
             maxMatches = DEFAULT_MAX_MATCHES;
         }
 
+        long maxMaskBytes = Long.getLong("coordinatecracker.gpuMaxMaskBytes", DEFAULT_MAX_MASK_BYTES).longValue();
+        if(maxMaskBytes < MIN_MAX_MASK_BYTES) {
+            maxMaskBytes = MIN_MAX_MASK_BYTES;
+        }
+
         String probe = probe(command);
-        return new GpuAccelerationBackend(command, maxMatches, probe.startsWith("OK"), probe);
+        return new GpuAccelerationBackend(command, maxMatches, maxMaskBytes, probe.startsWith("OK"), probe);
     }
 
     boolean isAvailable() {
@@ -104,6 +114,7 @@ final class GpuAccelerationBackend implements AutoCloseable {
                 return "GPU backend requires at least one observation per active pattern.";
             }
             totalObservations += pattern.observations.length;
+            int constrainingObservations = 0;
             if(activePatterns > MAX_HELPER_PATTERNS) {
                 return "GPU helper supports at most " + MAX_HELPER_PATTERNS + " active patterns per request, but this scan has " + activePatterns + ".";
             }
@@ -120,6 +131,7 @@ final class GpuAccelerationBackend implements AutoCloseable {
                     }
                     continue;
                 }
+                constrainingObservations++;
                 if(observation.variantCount != 4) {
                     return "GPU backend currently supports only four-state random block variants.";
                 }
@@ -129,6 +141,9 @@ final class GpuAccelerationBackend implements AutoCloseable {
                 if(observation.visibleMapping == CompiledObservation.MAPPING_MODULO_TWO && observation.wanted > 1) {
                     return "GPU backend received a two-state block observation outside the visible 0..1 range.";
                 }
+            }
+            if(constrainingObservations == 0) {
+                return "GPU backend requires at least one coordinate-constraining observation per active pattern.";
             }
         }
         return activePatterns > 0 ? null : "No active GPU-compatible patterns were supplied.";
@@ -142,7 +157,7 @@ final class GpuAccelerationBackend implements AutoCloseable {
 
         try {
             PersistentHelper helper = this.getOrStartHelper();
-            GpuOutput output = helper.scan(request);
+            GpuOutput output = this.scanTiled(helper, request);
             if(output.errorMessage != null) {
                 helper.close();
                 if(this.sharedHelper == helper) this.sharedHelper = null;
@@ -167,6 +182,181 @@ final class GpuAccelerationBackend implements AutoCloseable {
             this.closeCurrentHelper();
             return GpuScanResult.failed("GPU helper failed: " + e.getMessage());
         }
+    }
+
+
+
+    private GpuOutput scanTiled(PersistentHelper helper, ScanRequest request) throws Exception {
+        ObservationBounds bounds = ObservationBounds.from(request.compiledPatterns);
+        GpuOutput aggregate = new GpuOutput();
+        if(bounds == null) {
+            aggregate.errorMessage = "GPU sieve has no coordinate-constraining observations.";
+            return aggregate;
+        }
+
+        int effectiveMaxMatches = request.effectiveMaxMatches(this.maxMatches);
+        this.scanTile(helper, request, bounds, aggregate, effectiveMaxMatches, 0);
+        if(aggregate.errorMessage == null && aggregate.overflow == 0) {
+            aggregate.declaredCount = aggregate.matches.size();
+        }
+        return aggregate;
+    }
+
+    private void scanTile(PersistentHelper helper, ScanRequest request, ObservationBounds bounds,
+                          GpuOutput aggregate, int effectiveMaxMatches, int depth) throws Exception {
+        if(aggregate.errorMessage != null || aggregate.overflow > 0) {
+            return;
+        }
+        if(depth > 64) {
+            aggregate.errorMessage = "GPU tiling exceeded 64 recursive splits; reduce the scan radius or raise coordinatecracker.gpuMaxMaskBytes.";
+            return;
+        }
+
+        long estimatedMaskBytes = estimateMaskBytes(request, bounds);
+        if(estimatedMaskBytes > this.maxMaskBytes) {
+            ScanRequest[] split = splitRequest(request, bounds);
+            if(split == null) {
+                aggregate.errorMessage = "Minimum GPU tile still needs " + estimatedMaskBytes
+                    + " state-mask bytes, above coordinatecracker.gpuMaxMaskBytes=" + this.maxMaskBytes + ".";
+                return;
+            }
+            this.scanTile(helper, split[0], bounds, aggregate, effectiveMaxMatches, depth + 1);
+            this.scanTile(helper, split[1], bounds, aggregate, effectiveMaxMatches, depth + 1);
+            return;
+        }
+
+        GpuOutput tileOutput = helper.scan(request);
+        if(aggregate.firstLine == null) {
+            aggregate.firstLine = tileOutput.firstLine;
+        }
+        if(tileOutput.errorMessage != null) {
+            aggregate.errorMessage = tileOutput.errorMessage;
+            return;
+        }
+        if(tileOutput.declaredCount >= 0 && tileOutput.declaredCount != tileOutput.matches.size()) {
+            aggregate.errorMessage = "GPU helper reported " + tileOutput.declaredCount
+                + " matches but returned " + tileOutput.matches.size() + " for a tile.";
+            return;
+        }
+        if(tileOutput.overflow > 0) {
+            aggregate.overflow += tileOutput.overflow;
+            return;
+        }
+        if((long) aggregate.matches.size() + (long) tileOutput.matches.size() > (long) effectiveMaxMatches) {
+            aggregate.overflow++;
+            return;
+        }
+        aggregate.matches.addAll(tileOutput.matches);
+    }
+
+    private static ScanRequest[] splitRequest(ScanRequest request, ObservationBounds bounds) {
+        int xRange = request.maxXExclusive - request.minX;
+        int yRange = request.yEnd - request.yStart;
+        int zRange = request.maxZExclusive - request.minZ;
+        long xWords = wordsFor((long) xRange + bounds.dxRange());
+        long yFactor = (long) yRange + bounds.dyRange();
+        long zFactor = (long) zRange + bounds.dzRange();
+
+        int dimension = -1;
+        long best = -1L;
+        if(xRange > 1 && xWords > 1L && xWords > best) {
+            dimension = 0;
+            best = xWords;
+        }
+        if(yRange > 1 && yFactor > best) {
+            dimension = 1;
+            best = yFactor;
+        }
+        if(zRange > 1 && zFactor > best) {
+            dimension = 2;
+        }
+
+        switch(dimension) {
+        case 0:
+            return splitX(request);
+        case 1:
+            return splitY(request);
+        case 2:
+            return splitZ(request);
+        default:
+            return null;
+        }
+    }
+
+    private static ScanRequest[] splitX(ScanRequest request) {
+        int mid = alignedMidpoint(request.minX, request.maxXExclusive, 64);
+        if(mid <= request.minX || mid >= request.maxXExclusive) return null;
+        return new ScanRequest[] {
+            new ScanRequest(request.version, request.compiledPatterns, request.minX, mid, request.minZ, request.maxZExclusive, request.yStart, request.yEnd, request.maxMatches),
+            new ScanRequest(request.version, request.compiledPatterns, mid, request.maxXExclusive, request.minZ, request.maxZExclusive, request.yStart, request.yEnd, request.maxMatches)
+        };
+    }
+
+    private static ScanRequest[] splitY(ScanRequest request) {
+        int mid = midpoint(request.yStart, request.yEnd);
+        if(mid <= request.yStart || mid >= request.yEnd) return null;
+        return new ScanRequest[] {
+            new ScanRequest(request.version, request.compiledPatterns, request.minX, request.maxXExclusive, request.minZ, request.maxZExclusive, request.yStart, mid, request.maxMatches),
+            new ScanRequest(request.version, request.compiledPatterns, request.minX, request.maxXExclusive, request.minZ, request.maxZExclusive, mid, request.yEnd, request.maxMatches)
+        };
+    }
+
+    private static ScanRequest[] splitZ(ScanRequest request) {
+        int mid = midpoint(request.minZ, request.maxZExclusive);
+        if(mid <= request.minZ || mid >= request.maxZExclusive) return null;
+        return new ScanRequest[] {
+            new ScanRequest(request.version, request.compiledPatterns, request.minX, request.maxXExclusive, request.minZ, mid, request.yStart, request.yEnd, request.maxMatches),
+            new ScanRequest(request.version, request.compiledPatterns, request.minX, request.maxXExclusive, mid, request.maxZExclusive, request.yStart, request.yEnd, request.maxMatches)
+        };
+    }
+
+    private static int midpoint(int startInclusive, int endExclusive) {
+        return startInclusive + ((endExclusive - startInclusive) >>> 1);
+    }
+
+    private static int alignedMidpoint(int startInclusive, int endExclusive, int alignment) {
+        int raw = midpoint(startInclusive, endExclusive);
+        int offset = raw - startInclusive;
+        int alignedOffset = ((offset + alignment - 1) / alignment) * alignment;
+        int aligned = startInclusive + alignedOffset;
+        if(aligned <= startInclusive || aligned >= endExclusive) {
+            return raw;
+        }
+        return aligned;
+    }
+
+    private static long estimateMaskBytes(ScanRequest request, ObservationBounds bounds) {
+        long width = (long) request.maxXExclusive - (long) request.minX;
+        long depth = (long) request.maxZExclusive - (long) request.minZ;
+        long yRange = (long) request.yEnd - (long) request.yStart;
+        if(width <= 0L || depth <= 0L || yRange <= 0L) {
+            return 0L;
+        }
+
+        long extWidth = width + bounds.dxRange();
+        long extDepth = depth + bounds.dzRange();
+        long lookupYCount = yRange + bounds.dyRange();
+        if(extWidth <= 0L || extDepth <= 0L || lookupYCount <= 0L) {
+            return 0L;
+        }
+
+        long wordsPerRow = wordsFor(extWidth);
+        long bytes = multiplySaturated(wordsPerRow, extDepth);
+        bytes = multiplySaturated(bytes, lookupYCount);
+        bytes = multiplySaturated(bytes, (long) SIEVE_MASKS_PER_PLANE);
+        return multiplySaturated(bytes, (long) Long.BYTES);
+    }
+
+    private static long wordsFor(long bitCount) {
+        if(bitCount <= 0L) return 0L;
+        if(bitCount > Long.MAX_VALUE - 63L) return Long.MAX_VALUE;
+        return (bitCount + 63L) >>> 6;
+    }
+
+    private static long multiplySaturated(long left, long right) {
+        if(left == 0L || right == 0L) return 0L;
+        if(left > Long.MAX_VALUE / right) return Long.MAX_VALUE;
+        return left * right;
     }
 
     private PersistentHelper getOrStartHelper() throws IOException {
@@ -446,6 +636,70 @@ final class GpuAccelerationBackend implements AutoCloseable {
         int effectiveMaxMatches(int backendMaxMatches) {
             int requestMax = this.maxMatches < 1 ? backendMaxMatches : this.maxMatches;
             return Math.max(1, Math.min(backendMaxMatches, requestMax));
+        }
+    }
+
+
+
+    private static final class ObservationBounds {
+        final int minDx;
+        final int maxDx;
+        final int minDy;
+        final int maxDy;
+        final int minDz;
+        final int maxDz;
+
+        private ObservationBounds(int minDx, int maxDx, int minDy, int maxDy, int minDz, int maxDz) {
+            this.minDx = minDx;
+            this.maxDx = maxDx;
+            this.minDy = minDy;
+            this.maxDy = maxDy;
+            this.minDz = minDz;
+            this.maxDz = maxDz;
+        }
+
+        static ObservationBounds from(CompiledPattern[] patterns) {
+            boolean initialized = false;
+            int minDx = 0;
+            int maxDx = 0;
+            int minDy = 0;
+            int maxDy = 0;
+            int minDz = 0;
+            int maxDz = 0;
+            for(CompiledPattern pattern : patterns) {
+                if(pattern.impossible) continue;
+                for(CompiledObservation observation : pattern.observations) {
+                    if(observation.visibleMapping == CompiledObservation.MAPPING_CONSTANT_ZERO) {
+                        continue;
+                    }
+                    if(!initialized) {
+                        minDx = maxDx = observation.dx;
+                        minDy = maxDy = observation.dy;
+                        minDz = maxDz = observation.dz;
+                        initialized = true;
+                    } else {
+                        if(observation.dx < minDx) minDx = observation.dx;
+                        if(observation.dx > maxDx) maxDx = observation.dx;
+                        if(observation.dy < minDy) minDy = observation.dy;
+                        if(observation.dy > maxDy) maxDy = observation.dy;
+                        if(observation.dz < minDz) minDz = observation.dz;
+                        if(observation.dz > maxDz) maxDz = observation.dz;
+                    }
+                }
+            }
+            return initialized ? new ObservationBounds(minDx, maxDx, minDy, maxDy, minDz, maxDz) : null;
+        }
+
+        long dxRange() {
+            return (long) this.maxDx - (long) this.minDx;
+        }
+
+        long dyRange() {
+            return (long) this.maxDy - (long) this.minDy;
+        }
+
+        long dzRange() {
+            return (long) this.maxDz - (long) this.minDz;
         }
     }
 
